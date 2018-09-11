@@ -183,22 +183,29 @@ class LocalizationHelper {
     func reportMissingTranslations(localizationFolder: LocalizationFolder) {
         print("MISSING TRANSLATION CHECK:")
         let databases = localizationFolder.databases
-        for databaseA in databases {
-            for databaseB in databases {
-                guard databaseA !== databaseB else { continue }
+        for database in databases {
+            let allKeys = Set(getAllKeysFor(databases: localizationFolder.databases))
+            let myKeys = Set(getAllKeysFor(databases: [database]))
+            let diff = allKeys.subtracting(myKeys)
 
-                var missingKeys = [String]()
-                for key in databaseA.dictionary.keys {
-                    if databaseB.dictionary[key] == nil {
-                        missingKeys.append(key)
+            var missingKeys = [String]()
+            for key in diff {
+                var missingFromDatabases = [String]()
+                for db in databases {
+                    if db.dictionary[key] != nil {
+                        missingFromDatabases.append(db.name)
                     }
                 }
 
-                if !missingKeys.isEmpty {
-                    print("Keys from \(databaseA.displayName) missing from \(databaseB.displayName):")
-                    print(missingKeys)
-                    printSeperatorSmall()
+                missingKeys.append("\"\(key)\" -- exists in: \(missingFromDatabases)")
+            }
+
+            if !missingKeys.isEmpty {
+                print("\(database.name) missing keys from other databases:")
+                for str in missingKeys {
+                    print(str)
                 }
+                printSeperatorSmall()
             }
         }
 
