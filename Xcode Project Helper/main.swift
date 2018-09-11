@@ -8,6 +8,16 @@
 
 import Foundation
 
+class CodeLine {
+    let line: Int
+    var text: String
+
+    init(line: Int, text: String) {
+        self.line = line
+        self.text = text
+    }
+}
+
 func printSeperatorLarge() {
     print("------------------------------------------------------------------------------------------------")
     print("------------------------------------------------------------------------------------------------")
@@ -33,10 +43,10 @@ func getAllKeysFor(databases: [LanguageDatabase]) -> [String] {
 class LanguageDatabase {
     var name: String
     var displayName: String { return "\"\(name)\"" }
-    var dictionary: [String : String]
+    var dictionary: [String : CodeLine]
     var duplicates: NSCountedSet
 
-    init(name: String, dictionary: [String : String], duplicates: NSCountedSet) {
+    init(name: String, dictionary: [String : CodeLine], duplicates: NSCountedSet) {
         self.name = name
         self.dictionary = dictionary
         self.duplicates = duplicates
@@ -53,6 +63,50 @@ class LocalizationFolder {
     }
 }
 
+func parse(codeLines: [CodeLine], maxBlockCount: Int = Int.max) -> [CodeLine] {
+    var result = [CodeLine]()
+    var somethingRemoved = false
+    var activeBlockCommentCount = 0
+
+    for line in codeLines {
+        let trimmed = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            somethingRemoved = true
+            continue
+        }
+
+        guard !trimmed.hasPrefix("//") else {
+            somethingRemoved = true
+            continue
+        }
+
+        if trimmed.contains("/*") {
+            if (activeBlockCommentCount < maxBlockCount) {
+                activeBlockCommentCount += 1
+                somethingRemoved = true
+                continue
+            }
+        } else if trimmed.contains("*/") {
+            if (activeBlockCommentCount > 0) {
+                activeBlockCommentCount -= 1
+            } else {
+                print("ERROR: Negative amount of block comments!")
+            }
+            somethingRemoved = true
+            continue
+        }
+
+        guard activeBlockCommentCount == 0 else {
+            somethingRemoved = true
+            continue
+        }
+
+        result.append(line)
+    }
+
+    return somethingRemoved ? parse(codeLines: result, maxBlockCount: maxBlockCount) : result
+}
+
 class LocalizationHelper {
     var localizationFolders = [LocalizationFolder]()
     var duplicates = [[String]]()
@@ -61,11 +115,16 @@ class LocalizationHelper {
         var databases = [LanguageDatabase]()
         for filepath in filepaths {
             do {
-                var dictionary = [String : String]()
+                var dictionary = [String : CodeLine]()
                 let duplicates = NSCountedSet()
                 let data = try String(contentsOf: filepath, encoding: .utf8)
-                let lines = data.components(separatedBy: .newlines)
-                for line in lines {
+                let codeLines = data.components(separatedBy: .newlines).enumerated().map { (index, text) in
+                    CodeLine(line: index + 1, text: text)
+                }
+
+                let parsedCodeLines = parse(codeLines: codeLines, maxBlockCount: 1)
+                for codeLine in parsedCodeLines {
+                    let line = codeLine.text
                     var trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !trimmed.isEmpty else { continue }
                     guard !trimmed.hasPrefix("//") else { continue }
@@ -80,7 +139,6 @@ class LocalizationHelper {
                         }
                         continue
                     }
-                    //TODO: Handle (or at least detect) block comments.
 
                     let split = trimmed.components(separatedBy: " = ")
                     guard split.count == 2 else { continue }
@@ -90,7 +148,7 @@ class LocalizationHelper {
                     let value = split[1].trimmingCharacters(in: trimSet)
 
                     duplicates.add(key)
-                    dictionary[key] = value
+                    dictionary[key] = CodeLine(line: codeLine.line, text: value)
                 }
 
                 var name = filepath.absoluteString
@@ -218,7 +276,7 @@ class LocalizationHelper {
         for key in getAllKeysFor(databases: databases) {
             let countedSet = NSCountedSet()
             for database in databases {
-                if let value = database.dictionary[key] {
+                if let value = database.dictionary[key]?.text {
                     countedSet.add(value)
                 }
             }
@@ -227,7 +285,7 @@ class LocalizationHelper {
                 if countedSet.count(for: value) > 1 {
                     var matchingDatabaseNames = [String]()
                     for database in databases {
-                        if database.dictionary[key] == value {
+                        if database.dictionary[key]?.text == value {
                             matchingDatabaseNames.append(database.name)
                         }
                     }
@@ -239,9 +297,6 @@ class LocalizationHelper {
         }
 
         printSeperatorMedium()
-    }
-    func reportSmartQuotes(localzationFolder: LocalizationFolder) {
-        //TODO: Add this.
     }
 }
 
