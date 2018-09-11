@@ -240,6 +240,9 @@ class LocalizationHelper {
 
         printSeperatorMedium()
     }
+    func reportSmartQuotes(localzationFolder: LocalizationFolder) {
+        //TODO: Add this.
+    }
 }
 
 LocalizationHelper().run()
