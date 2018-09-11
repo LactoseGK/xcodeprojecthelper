@@ -9,11 +9,25 @@
 import Foundation
 
 func printSeperatorLarge() {
-    print("---------------------------------------------------------")
+    print("------------------------------------------------------------------------------------------------")
+    print("------------------------------------------------------------------------------------------------")
+}
+
+func printSeperatorMedium() {
+    print("------------------------------------------------")
 }
 
 func printSeperatorSmall() {
-    print("-------------------")
+    print("------------")
+}
+
+func getAllKeysFor(databases: [LanguageDatabase]) -> [String] {
+    var keys = Set<String>()
+    for database in databases {
+        keys.formUnion(database.dictionary.keys)
+    }
+
+    return Array(keys)
 }
 
 class LanguageDatabase {
@@ -29,11 +43,22 @@ class LanguageDatabase {
     }
 }
 
+class LocalizationFolder {
+    var name: String
+    var databases: [LanguageDatabase]
+
+    init(name: String, databases: [LanguageDatabase]) {
+        self.name = name
+        self.databases = databases
+    }
+}
+
 class LocalizationHelper {
-    var databases = [LanguageDatabase]()
+    var localizationFolders = [LocalizationFolder]()
     var duplicates = [[String]]()
 
-    func loadDatabases(from filepaths: [URL]) {
+    func loadDatabases(from filepaths: [URL]) -> [LanguageDatabase] {
+        var databases = [LanguageDatabase]()
         for filepath in filepaths {
             do {
                 var dictionary = [String : String]()
@@ -47,6 +72,13 @@ class LocalizationHelper {
                     while trimmed.contains("//") {
                         guard let commentTrimmed = trimmed.components(separatedBy: "//").first else { break }
                         trimmed = commentTrimmed
+                    }
+                    trimmed = trimmed.trimmingCharacters(in: .whitespaces)
+                    guard trimmed.hasSuffix(";") else {
+                        if line.contains("\"") {
+                            print("WARNING: We probably trimmed too much! \(line) -----> \(trimmed)")
+                        }
+                        continue
                     }
                     //TODO: Handle (or at least detect) block comments.
 
@@ -62,9 +94,9 @@ class LocalizationHelper {
                 }
 
                 var name = filepath.absoluteString
-                for filepathComponent in filepath.pathComponents {
+                for (index, filepathComponent) in filepath.pathComponents.enumerated() {
                     if filepathComponent.hasSuffix(".lproj") {
-                        name = filepathComponent
+                        name = (index > 0) ? "\(filepath.pathComponents[index - 1])/\(filepathComponent)" : "\(filepathComponent)"
                         break
                     }
                 }
@@ -74,10 +106,13 @@ class LocalizationHelper {
                 print("ERROR: Loading database from \(filepath): \(error)")
             }
         }
+
+        return databases
     }
 
     func run() {
         //TODO: Better command line argument logic and error handling.
+        //TODO TODO: Turn into non-command line. Buttons and stuff.
         guard CommandLine.argc == 2 else {
             print("Specify folderpath and try again.")
             return
@@ -85,23 +120,47 @@ class LocalizationHelper {
         
         let folderPath = CommandLine.arguments[1]
         let fm = FileManager.default
-        let home = fm.homeDirectoryForCurrentUser
-        let localizationFolderURL = home.appendingPathComponent(folderPath)
-        guard let files = try? fm.contentsOfDirectory(at: localizationFolderURL, includingPropertiesForKeys: nil) else {
-            print("ERROR: Couldn't find any localization files (.lproj)")
-            return
+        let projectFolderURL = fm.homeDirectoryForCurrentUser.appendingPathComponent(folderPath)
+        let enumerator = fm.enumerator(at: projectFolderURL, includingPropertiesForKeys: nil)
+        var localizationFiles = [URL]()
+        while let element = enumerator?.nextObject() as? URL {
+            if element.pathExtension == "strings" {
+                localizationFiles.append(element)
+            }
         }
 
-        let fileURLs = files.filter( {$0.pathExtension == "lproj"} ).map( {$0.appendingPathComponent("Localizable.strings")})
-        loadDatabases(from: fileURLs)
+        var foldersToScan = [String : [URL]]()
+        for f in localizationFiles {
+            for (index, pathComponent) in f.pathComponents.enumerated() {
+                if pathComponent.hasSuffix(".lproj") {
+                    let dictionaryKey = (index > 0) ? "\(f.pathComponents[index - 1])" : "DefaultFolder"
+                    if foldersToScan[dictionaryKey] == nil {
+                        foldersToScan[dictionaryKey] = [URL]()
+                    }
+                    foldersToScan[dictionaryKey]?.append(f)
+                    break
+                }
+            }
+        }
 
-        reportDuplicates()
-        reportMissingTranslations()
-        reportPossibleMissingTranslations()
+        for key in foldersToScan.keys {
+            guard let folderURLs = foldersToScan[key] else { continue }
+            let databases = loadDatabases(from: folderURLs)
+            localizationFolders.append(LocalizationFolder(name: key, databases: databases))
+        }
+
+        for folder in localizationFolders {
+            print("+++++++++++++ \(folder.name) +++++++++++++")
+            reportDuplicates(localizationFolder: folder)
+            reportMissingTranslations(localizationFolder: folder)
+            reportPossibleMissingTranslations(localizationFolder: folder)
+            printSeperatorLarge()
+        }
     }
 
-    func reportDuplicates() {
+    func reportDuplicates(localizationFolder: LocalizationFolder) {
         print("DUPLICATE CHECK:")
+        let databases = localizationFolder.databases
         for database in databases {
             var duplicates = [String]()
             for key in database.duplicates.allObjects {
@@ -118,11 +177,12 @@ class LocalizationHelper {
             }
         }
 
-        printSeperatorLarge()
+        printSeperatorMedium()
     }
 
-    func reportMissingTranslations() {
+    func reportMissingTranslations(localizationFolder: LocalizationFolder) {
         print("MISSING TRANSLATION CHECK:")
+        let databases = localizationFolder.databases
         for databaseA in databases {
             for databaseB in databases {
                 guard databaseA !== databaseB else { continue }
@@ -142,21 +202,13 @@ class LocalizationHelper {
             }
         }
 
-        printSeperatorLarge()
+        printSeperatorMedium()
     }
 
-    var allDatabaseKeys: [String] {
-        var keys = Set<String>()
-        for database in databases {
-            keys.formUnion(database.dictionary.keys)
-        }
-
-        return Array(keys)
-    }
-
-    func reportPossibleMissingTranslations() {
+    func reportPossibleMissingTranslations(localizationFolder: LocalizationFolder) {
         print("POSSIBLE MISSING TRANSLATION CHECK:")
-        for key in allDatabaseKeys {
+        let databases = localizationFolder.databases
+        for key in getAllKeysFor(databases: databases) {
             let countedSet = NSCountedSet()
             for database in databases {
                 if let value = database.dictionary[key] {
@@ -179,7 +231,7 @@ class LocalizationHelper {
             }
         }
 
-        printSeperatorLarge()
+        printSeperatorMedium()
     }
 }
 
