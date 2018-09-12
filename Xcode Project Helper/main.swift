@@ -212,6 +212,7 @@ class LocalizationHelper {
             reportDuplicates(localizationFolder: folder)
             reportMissingTranslations(localizationFolder: folder)
             reportPossibleMissingTranslations(localizationFolder: folder)
+            reportIfValueIsSameAsKey(localizationFolder: folder)
             printSeperatorLarge()
         }
     }
@@ -293,6 +294,26 @@ class LocalizationHelper {
                     print("\"\(key)\" has the same translation in \(matchingDatabaseNames): \"\(value)\"")
                     printSeperatorSmall()
                 }
+            }
+        }
+
+        printSeperatorMedium()
+    }
+
+    func reportIfValueIsSameAsKey(localizationFolder: LocalizationFolder) {
+        print("VALUE = KEY CHECK:")
+        let databases = localizationFolder.databases
+        for database in databases {
+            var warnings = [String]()
+            database.dictionary.forEach { (key, value) in
+                if key == value.text {
+                    warnings.append("\(key)")
+                }
+            }
+
+            if !warnings.isEmpty {
+                print("\(database.displayName) has key(s) with translation = key. Intentional?")
+                print(warnings)
             }
         }
 
