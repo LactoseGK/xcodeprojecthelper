@@ -62,6 +62,10 @@ class LocalizationFolder {
     }
 }
 
+func getUsedLocalizationKeysFrom(codeFile: URL) -> [String] {
+    return []
+}
+
 func parse(codeLines: [CodeLine], maxBlockCount: Int = Int.max) -> [CodeLine] {
     var result = [CodeLine]()
     var somethingRemoved = false
@@ -180,9 +184,12 @@ class LocalizationHelper {
         let projectFolderURL = fm.homeDirectoryForCurrentUser.appendingPathComponent(folderPath)
         let enumerator = fm.enumerator(at: projectFolderURL, includingPropertiesForKeys: nil)
         var localizationFiles = [URL]()
+        var codeFiles = [URL]()
         while let element = enumerator?.nextObject() as? URL {
             if element.pathExtension == "strings" {
                 localizationFiles.append(element)
+            } else if element.pathExtension == "swift" {
+                codeFiles.append(element)
             }
         }
 
@@ -206,6 +213,14 @@ class LocalizationHelper {
             localizationFolders.append(LocalizationFolder(name: key, databases: databases))
         }
 
+        var usedLocalizationKeys = [String]()
+        for codeFile in codeFiles {
+            let usedKeys = getUsedLocalizationKeysFrom(codeFile: codeFile)
+            if !usedKeys.isEmpty {
+                usedLocalizationKeys.append(contentsOf: usedKeys)
+            }
+        }
+
         for folder in localizationFolders {
             print("+++++++++++++ \(folder.name) +++++++++++++")
             reportDuplicates(localizationFolder: folder)
@@ -215,6 +230,9 @@ class LocalizationHelper {
             reportIfVaryingAmountOfVariables(localizationFolder: folder)
             printSeperatorLarge()
         }
+
+        reportUnusedKeys()
+        reportGhostKeysInUse() //Keys that don't exist.
     }
 
     func reportDuplicates(localizationFolder: LocalizationFolder) {
@@ -347,6 +365,14 @@ class LocalizationHelper {
                 }
             }
         }
+    }
+
+    //TODO: Implement.
+    func reportUnusedKeys() {
+    }
+
+    //TODO: Implement.
+    func reportGhostKeysInUse() {
     }
 }
 
