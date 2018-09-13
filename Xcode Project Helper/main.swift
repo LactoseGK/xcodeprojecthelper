@@ -20,7 +20,6 @@ class CodeLine {
 
 func printSeperatorLarge() {
     print("------------------------------------------------------------------------------------------------")
-    print("------------------------------------------------------------------------------------------------")
 }
 
 func printSeperatorMedium() {
@@ -213,12 +212,12 @@ class LocalizationHelper {
             reportMissingTranslations(localizationFolder: folder)
             reportPossibleMissingTranslations(localizationFolder: folder)
             reportIfValueIsSameAsKey(localizationFolder: folder)
+            reportIfVaryingAmountOfVariables(localizationFolder: folder)
             printSeperatorLarge()
         }
     }
 
     func reportDuplicates(localizationFolder: LocalizationFolder) {
-        print("DUPLICATE CHECK:")
         let databases = localizationFolder.databases
         for database in databases {
             var duplicates = [String]()
@@ -240,7 +239,6 @@ class LocalizationHelper {
     }
 
     func reportMissingTranslations(localizationFolder: LocalizationFolder) {
-        print("MISSING TRANSLATION CHECK:")
         let databases = localizationFolder.databases
         for database in databases {
             let allKeys = Set(getAllKeysFor(databases: localizationFolder.databases))
@@ -272,7 +270,6 @@ class LocalizationHelper {
     }
 
     func reportPossibleMissingTranslations(localizationFolder: LocalizationFolder) {
-        print("POSSIBLE MISSING TRANSLATION CHECK:")
         let databases = localizationFolder.databases
         for key in getAllKeysFor(databases: databases) {
             let countedSet = NSCountedSet()
@@ -301,7 +298,6 @@ class LocalizationHelper {
     }
 
     func reportIfValueIsSameAsKey(localizationFolder: LocalizationFolder) {
-        print("VALUE = KEY CHECK:")
         let databases = localizationFolder.databases
         for database in databases {
             var warnings = [String]()
@@ -318,6 +314,39 @@ class LocalizationHelper {
         }
 
         printSeperatorMedium()
+    }
+
+    func reportIfVaryingAmountOfVariables(localizationFolder: LocalizationFolder) {
+        let databases = localizationFolder.databases
+        guard !databases.isEmpty else { return }
+
+        let allKeys = getAllKeysFor(databases: databases)
+        for key in allKeys {
+            var numVariables = [String : Int]()
+            for database in databases {
+                let variableCount: Int
+                if let value = database.dictionary[key]?.text {
+                    if value.contains("%@") {
+                        let stripped = value.replacingOccurrences(of: "%@", with: "")
+                        variableCount = (value.count - stripped.count) / 2
+                    } else {
+                        variableCount = 0
+                    }
+                } else {
+                    variableCount = 0
+                }
+
+                numVariables[database.displayName] = variableCount
+            }
+
+            for database in databases {
+                let comparison = numVariables[databases.first!.displayName]!
+                let current = numVariables[database.displayName]!
+                if current != comparison {
+                    print("\"\(key)\" -- Mismatched amount of variables -- \(databases.first!.displayName) = \(comparison), \(database.displayName) = \(current)")
+                }
+            }
+        }
     }
 }
 
