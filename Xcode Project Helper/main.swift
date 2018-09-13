@@ -62,8 +62,50 @@ class LocalizationFolder {
     }
 }
 
-func getUsedLocalizationKeysFrom(codeFile: URL) -> [String] {
-    return []
+func getCodeLinesFromFileURLs(codeFileURLs: [URL]) -> [CodeLine] {
+    var returningCodeLines = [CodeLine]()
+    for filepath in codeFileURLs {
+        do {
+            let data = try String(contentsOf: filepath, encoding: .utf8)
+            let codeLines = data.components(separatedBy: .newlines).enumerated().map { (index, text) in
+                CodeLine(line: index + 1, text: text)
+            }
+
+            let parsedCodeLines = parse(codeLines: codeLines)
+            returningCodeLines.append(contentsOf: parsedCodeLines)
+        } catch {
+            print("ERROR: Loading codeFile from \(filepath): \(error)")
+        }
+    }
+    return returningCodeLines
+}
+
+extension String {
+    func matchingStrings(regex: String) -> [[String]] {
+        guard let regex = try? NSRegularExpression(pattern: regex, options: []) else { return [] }
+        let nsString = self as NSString
+        let results  = regex.matches(in: self, options: [], range: NSMakeRange(0, nsString.length))
+        return results.map { result in
+            (0..<result.numberOfRanges).map { result.range(at: $0).location != NSNotFound
+                ? nsString.substring(with: result.range(at: $0))
+                : ""
+            }
+        }
+    }
+}
+
+func getUsedLocalizationKeysFrom(codeFileURLs: [URL]) -> [String] {
+    let codeLines = getCodeLinesFromFileURLs(codeFileURLs: codeFileURLs)
+    let regex = "\"(\\w+)\"\\.localized"
+    var usedLocalizationKeys = Set<String>()
+
+    for codeLine in codeLines {
+        if let key = codeLine.text.matchingStrings(regex: regex).first?[1] {
+            usedLocalizationKeys.insert(key)
+        }
+    }
+
+    return Array(usedLocalizationKeys)
 }
 
 func parse(codeLines: [CodeLine], maxBlockCount: Int = Int.max) -> [CodeLine] {
@@ -213,13 +255,7 @@ class LocalizationHelper {
             localizationFolders.append(LocalizationFolder(name: key, databases: databases))
         }
 
-        var usedLocalizationKeys = [String]()
-        for codeFile in codeFiles {
-            let usedKeys = getUsedLocalizationKeysFrom(codeFile: codeFile)
-            if !usedKeys.isEmpty {
-                usedLocalizationKeys.append(contentsOf: usedKeys)
-            }
-        }
+        let usedLocalizationKeys = getUsedLocalizationKeysFrom(codeFileURLs: codeFiles)
 
         for folder in localizationFolders {
             print("+++++++++++++ \(folder.name) +++++++++++++")
@@ -231,8 +267,8 @@ class LocalizationHelper {
             printSeperatorLarge()
         }
 
-        reportUnusedKeys()
-        reportGhostKeysInUse() //Keys that don't exist.
+        reportUnusedKeys(localizationFolders: localizationFolders, usedKeys: usedLocalizationKeys)
+        reportGhostKeysInUse(localizationFolders: localizationFolders, usedKeys: usedLocalizationKeys) //Keys that don't exist.
     }
 
     func reportDuplicates(localizationFolder: LocalizationFolder) {
@@ -367,12 +403,43 @@ class LocalizationHelper {
         }
     }
 
-    //TODO: Implement.
-    func reportUnusedKeys() {
+    func reportUnusedKeys(localizationFolders: [LocalizationFolder], usedKeys: [String]) {
+        var allKeys = Set<String>()
+        for folder in localizationFolders {
+            allKeys.formUnion(getAllKeysFor(databases: folder.databases))
+        }
+
+        let usedKeySet = Set<String>(usedKeys)
+        var unusedKeys = [String]()
+        for key in allKeys {
+            if !usedKeySet.contains(key) {
+                unusedKeys.append(key)
+            }
+        }
+
+        if !unusedKeys.isEmpty {
+            print("Unused keys found:")
+            print(unusedKeys)
+        }
     }
 
-    //TODO: Implement.
-    func reportGhostKeysInUse() {
+    func reportGhostKeysInUse(localizationFolders: [LocalizationFolder], usedKeys: [String]) {
+        var allKeys = Set<String>()
+        for folder in localizationFolders {
+            allKeys.formUnion(getAllKeysFor(databases: folder.databases))
+        }
+
+        var ghostKeys = [String]()
+        for usedKey in usedKeys {
+            if !allKeys.contains(usedKey) {
+                ghostKeys.append(usedKey)
+            }
+        }
+
+        if !ghostKeys.isEmpty {
+            print("Keys used that were not found in any localization folder:")
+            print(ghostKeys)
+        }
     }
 }
 
