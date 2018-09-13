@@ -420,6 +420,7 @@ class LocalizationHelper {
         if !unusedKeys.isEmpty {
             print("Unused keys found:")
             print(unusedKeys)
+            printSeperatorLarge()
         }
     }
 
@@ -439,6 +440,7 @@ class LocalizationHelper {
         if !ghostKeys.isEmpty {
             print("Keys used that were not found in any localization folder:")
             print(ghostKeys)
+            printSeperatorLarge()
         }
     }
 }
